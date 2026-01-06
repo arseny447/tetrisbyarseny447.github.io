@@ -16,6 +16,29 @@
       background: #000;
       margin-top: 20px;
       box-shadow: 0 0 20px #000;
+      touch-action: none; /* чтобы тачи не скроллили страницу */
+    }
+
+    /* Мобильные кнопки */
+    #mobile-controls {
+      display: none;          /* по умолчанию скрыто — покажем только на телефоне */
+      margin-top: 10px;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    #mobile-controls button {
+      font-size: 24px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      background: #333;
+      color: #fff;
+    }
+
+    #mobile-controls button:active {
+      background: #555;
     }
   </style>
 </head>
@@ -24,15 +47,22 @@
   <p>Управление: ← → – влево/вправо, ↑ – вращать, ↓ – быстрее вниз</p>
   <canvas width="320" height="640"></canvas>
 
+  <!-- Кнопки для телефона -->
+  <div id="mobile-controls">
+    <button id="btn-left">◀</button>
+    <button id="btn-rotate">⟳</button>
+    <button id="btn-right">▶</button>
+    <button id="btn-down">▼</button>
+  </div>
+
   <script>
     const canvas = document.querySelector('canvas');
     const context = canvas.getContext('2d');
 
-    const grid = 32;              // размер одной клетки
+    const grid = 32;
     const cols = 10;
     const rows = 20;
 
-    // игровое поле 20x10
     const playfield = [];
 
     for (let row = -2; row < rows; row++) {
@@ -42,7 +72,6 @@
       }
     }
 
-    // фигуры (тетромино)
     const tetrominos = {
       'I': [
         [0, 0, 0, 0],
@@ -93,10 +122,9 @@
 
     let count = 0;
     let tetromino = null;
-    let rAF = null; // requestAnimationFrame id
+    let rAF = null;
     let gameOver = false;
 
-    // генерация случайной последовательности фигур (bag randomizer)
     const tetrominoSequence = [];
 
     function getRandomTetromino() {
@@ -108,10 +136,10 @@
           tetrominoSequence.push(name);
         }
       }
+
       const name = tetrominoSequence.pop();
       const matrix = tetrominos[name];
 
-      // I и O центрируем, остальные чуть левее
       const col = Math.floor(cols / 2 - Math.ceil(matrix[0].length / 2));
       const row = name === 'I' ? -1 : -2;
 
@@ -158,7 +186,6 @@
         for (let col = 0; col < tetromino.matrix[row].length; col++) {
           if (tetromino.matrix[row][col]) {
             if (tetromino.row + row < 0) {
-              // коснулись верха — игра окончена
               gameOver = true;
               return;
             }
@@ -167,7 +194,6 @@
         }
       }
 
-      // проверяем заполненные линии
       for (let row = rows - 1; row >= 0; ) {
         if (playfield[row].every(cell => cell !== 0)) {
           for (let r = row; r >= 0; r--) {
@@ -183,6 +209,42 @@
       tetromino = getRandomTetromino();
     }
 
+    // === ФУНКЦИИ ДВИЖЕНИЯ (общие для клавиатуры и телефона) ===
+    function moveLeft() {
+      if (gameOver) return;
+      const col = tetromino.col - 1;
+      if (isValidMove(tetromino.matrix, tetromino.row, col)) {
+        tetromino.col = col;
+      }
+    }
+
+    function moveRight() {
+      if (gameOver) return;
+      const col = tetromino.col + 1;
+      if (isValidMove(tetromino.matrix, tetromino.row, col)) {
+        tetromino.col = col;
+      }
+    }
+
+    function rotateTetromino() {
+      if (gameOver) return;
+      const rotated = rotate(tetromino.matrix);
+      if (isValidMove(rotated, tetromino.row, tetromino.col)) {
+        tetromino.matrix = rotated;
+      }
+    }
+
+    function softDrop() {
+      if (gameOver) return;
+      const row = tetromino.row + 1;
+      if (!isValidMove(tetromino.matrix, row, tetromino.col)) {
+        tetromino.row++;
+        placeTetromino();
+        return;
+      }
+      tetromino.row = row;
+    }
+
     function loop() {
       rAF = requestAnimationFrame(loop);
       context.clearRect(0, 0, canvas.width, canvas.height);
@@ -195,7 +257,6 @@
         return;
       }
 
-      // падение фигуры каждые 35 кадров
       if (++count > 35) {
         tetromino.row++;
         count = 0;
@@ -206,7 +267,6 @@
         }
       }
 
-      // рисуем поле
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
           if (playfield[row][col]) {
@@ -217,7 +277,6 @@
         }
       }
 
-      // рисуем текущую фигуру
       if (tetromino) {
         context.fillStyle = colors[tetromino.name];
         for (let row = 0; row < tetromino.matrix.length; row++) {
@@ -232,42 +291,59 @@
       }
     }
 
-    // обработка клавиш
+    // КЛАВИАТУРА (ПК)
     document.addEventListener('keydown', (e) => {
       if (gameOver) return;
 
-      // стрелки влево/вправо
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        const col = e.key === 'ArrowLeft'
-          ? tetromino.col - 1
-          : tetromino.col + 1;
-
-        if (isValidMove(tetromino.matrix, tetromino.row, col)) {
-          tetromino.col = col;
-        }
-      }
-
-      // стрелка вверх — вращение
-      if (e.key === 'ArrowUp') {
-        const rotated = rotate(tetromino.matrix);
-        if (isValidMove(rotated, tetromino.row, tetromino.col)) {
-          tetromino.matrix = rotated;
-        }
-      }
-
-      // стрелка вниз — ускорить падение
-      if (e.key === 'ArrowDown') {
-        const row = tetromino.row + 1;
-        if (!isValidMove(tetromino.matrix, row, tetromino.col)) {
-          tetromino.row++;
-          placeTetromino();
-          return;
-        }
-        tetromino.row = row;
+      if (e.key === 'ArrowLeft') {
+        moveLeft();
+      } else if (e.key === 'ArrowRight') {
+        moveRight();
+      } else if (e.key === 'ArrowUp') {
+        rotateTetromino();
+      } else if (e.key === 'ArrowDown') {
+        softDrop();
       }
     });
 
-    // старт игры
+    // ОПРЕДЕЛЕНИЕ МОБИЛКИ И КНОПКИ
+    function isMobile() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i
+        .test(navigator.userAgent);
+    }
+
+    const mobileControls = document.getElementById('mobile-controls');
+
+    if (isMobile()) {
+      mobileControls.style.display = 'flex';
+
+      const leftBtn = document.getElementById('btn-left');
+      const rightBtn = document.getElementById('btn-right');
+      const rotateBtn = document.getElementById('btn-rotate');
+      const downBtn = document.getElementById('btn-down');
+
+      // touchstart, чтобы срабатывало сразу при нажатии
+      leftBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        moveLeft();
+      });
+
+      rightBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        moveRight();
+      });
+
+      rotateBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        rotateTetromino();
+      });
+
+      downBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        softDrop();
+      });
+    }
+
     tetromino = getRandomTetromino();
     rAF = requestAnimationFrame(loop);
   </script>
