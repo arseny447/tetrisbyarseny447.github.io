@@ -11,6 +11,8 @@
       flex-direction: column;
       align-items: center;
       font-family: sans-serif;
+      margin: 0;
+      padding: 10px;
     }
     canvas {
       background: #000;
@@ -19,22 +21,39 @@
       touch-action: none; /* чтобы тачи не скроллили страницу */
     }
 
+    /* Немного увеличим канвас на мобиле */
+    @media (max-width: 600px) {
+      canvas {
+        width: 360px;
+        height: 720px;
+      }
+    }
+
     /* Мобильные кнопки */
     #mobile-controls {
       display: none;          /* по умолчанию скрыто — покажем только на телефоне */
-      margin-top: 10px;
+      margin-top: 12px;
       gap: 10px;
       justify-content: center;
-      flex-wrap: wrap;
+      align-items: center;
+      flex-direction: column;
+    }
+
+    #mobile-controls-row-top,
+    #mobile-controls-row-bottom {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
     }
 
     #mobile-controls button {
-      font-size: 24px;
-      padding: 10px 16px;
-      border-radius: 8px;
+      font-size: 26px;
+      padding: 12px 18px;
+      border-radius: 10px;
       border: none;
       background: #333;
       color: #fff;
+      min-width: 60px;
     }
 
     #mobile-controls button:active {
@@ -44,15 +63,19 @@
 </head>
 <body>
   <h1>Tetris на JS</h1>
-  <p>Управление: ← → – влево/вправо, ↑ – вращать, ↓ – быстрее вниз</p>
+  <p>ПК: стрелки ← → ↑ ↓. Телефон: кнопки ниже.</p>
   <canvas width="320" height="640"></canvas>
 
-  <!-- Кнопки для телефона -->
+  <!-- Кнопки для телефона: сверху ↑, снизу ◀ ▼ ▶ -->
   <div id="mobile-controls">
-    <button id="btn-left">◀</button>
-    <button id="btn-rotate">⟳</button>
-    <button id="btn-right">▶</button>
-    <button id="btn-down">▼</button>
+    <div id="mobile-controls-row-top">
+      <button id="btn-rotate">↑</button>
+    </div>
+    <div id="mobile-controls-row-bottom">
+      <button id="btn-left">◀</button>
+      <button id="btn-down">▼</button>
+      <button id="btn-right">▶</button>
+    </div>
   </div>
 
   <script>
@@ -209,7 +232,7 @@
       tetromino = getRandomTetromino();
     }
 
-    // === ФУНКЦИИ ДВИЖЕНИЯ (общие для клавиатуры и телефона) ===
+    // === Движение (общие функции) ===
     function moveLeft() {
       if (gameOver) return;
       const col = tetromino.col - 1;
@@ -234,15 +257,19 @@
       }
     }
 
+    // Исправленный softDrop:
+    // сначала проверяем, можно ли идти ниже; если нет — ставим фигуру и выходим
     function softDrop() {
       if (gameOver) return;
-      const row = tetromino.row + 1;
-      if (!isValidMove(tetromino.matrix, row, tetromino.col)) {
-        tetromino.row++;
+      const nextRow = tetromino.row + 1;
+
+      if (!isValidMove(tetromino.matrix, nextRow, tetromino.col)) {
+        // уже упёрлась — фиксируем фигуру
         placeTetromino();
         return;
       }
-      tetromino.row = row;
+
+      tetromino.row = nextRow;
     }
 
     function loop() {
@@ -257,16 +284,19 @@
         return;
       }
 
+      // падение по таймеру
       if (++count > 35) {
-        tetromino.row++;
+        const nextRow = tetromino.row + 1;
         count = 0;
 
-        if (!isValidMove(tetromino.matrix, tetromino.row, tetromino.col)) {
-          tetromino.row--;
+        if (isValidMove(tetromino.matrix, nextRow, tetromino.col)) {
+          tetromino.row = nextRow;
+        } else {
           placeTetromino();
         }
       }
 
+      // рисуем поле
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
           if (playfield[row][col]) {
@@ -277,6 +307,7 @@
         }
       }
 
+      // рисуем текущую фигуру
       if (tetromino) {
         context.fillStyle = colors[tetromino.name];
         for (let row = 0; row < tetromino.matrix.length; row++) {
@@ -291,7 +322,7 @@
       }
     }
 
-    // КЛАВИАТУРА (ПК)
+    // Клавиатура (ПК)
     document.addEventListener('keydown', (e) => {
       if (gameOver) return;
 
@@ -306,7 +337,7 @@
       }
     });
 
-    // ОПРЕДЕЛЕНИЕ МОБИЛКИ И КНОПКИ
+    // Определяем мобилку и вешаем обработчики
     function isMobile() {
       return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i
         .test(navigator.userAgent);
@@ -322,26 +353,15 @@
       const rotateBtn = document.getElementById('btn-rotate');
       const downBtn = document.getElementById('btn-down');
 
-      // touchstart, чтобы срабатывало сразу при нажатии
-      leftBtn.addEventListener('touchstart', (e) => {
+      const onTouch = (handler) => (e) => {
         e.preventDefault();
-        moveLeft();
-      });
+        handler();
+      };
 
-      rightBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        moveRight();
-      });
-
-      rotateBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        rotateTetromino();
-      });
-
-      downBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        softDrop();
-      });
+      leftBtn.addEventListener('touchstart', onTouch(moveLeft));
+      rightBtn.addEventListener('touchstart', onTouch(moveRight));
+      rotateBtn.addEventListener('touchstart', onTouch(rotateTetromino));
+      downBtn.addEventListener('touchstart', onTouch(softDrop));
     }
 
     tetromino = getRandomTetromino();
