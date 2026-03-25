@@ -1,8 +1,304 @@
 <!DOCTYPE html>
 <html lang="ru">
+<!DOCTYPE html>
+<html lang="ru">
 <head>
 <meta charset="UTF-8">
 <title>Tetris PRO</title>
+<style>
+body {
+  background: #111;
+  color: #eee;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: sans-serif;
+  margin: 0;
+  padding: 10px;
+}
+
+canvas {
+  background: #000;
+  margin-top: 20px;
+  box-shadow: 0 0 20px #000;
+}
+
+#mobile-controls {
+  display: none;
+  margin-top: 12px;
+}
+
+button {
+  font-size: 20px;
+  padding: 10px;
+  margin: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Tetris на JS</h1>
+<p>ПК: стрелки ← → ↑ ↓. Телефон: кнопки ниже.</p>
+
+<div>Очки: <span id="score">0</span></div>
+
+<h3>🏆 Лидерборд</h3>
+<ol id="leaderboard"></ol>
+
+<canvas width="320" height="640"></canvas>
+
+<div id="mobile-controls">
+<button onclick="moveLeft()">◀</button>
+<button onclick="rotateTetromino()">⟳</button>
+<button onclick="moveRight()">▶</button>
+<button onclick="softDrop()">▼</button>
+</div>
+
+<script>
+const canvas = document.querySelector('canvas');
+const context = canvas.getContext('2d');
+
+const grid = 32;
+const cols = 10;
+const rows = 20;
+
+/* ===== ОЧКИ ===== */
+let score = 0;
+
+function updateScoreDisplay(){
+  document.getElementById("score").innerText = score;
+}
+
+function addScore(lines){
+  const pts = [0,100,300,500,800];
+  score += pts[lines];
+  updateScoreDisplay();
+}
+
+/* ===== ЛИДЕРБОРД ===== */
+function getLB(){
+  return JSON.parse(localStorage.getItem("tetrisLB")) || [];
+}
+
+function saveLB(lb){
+  localStorage.setItem("tetrisLB", JSON.stringify(lb));
+}
+
+function addLB(name, score){
+  let lb = getLB();
+  lb.push({name, score});
+  lb.sort((a,b)=>b.score-a.score);
+  lb = lb.slice(0,10);
+  saveLB(lb);
+}
+
+function renderLB(){
+  let lb = getLB();
+  document.getElementById("leaderboard").innerHTML =
+    lb.map(x=>`<li>${x.name}: ${x.score}</li>`).join("");
+}
+
+/* ===== ПОЛЕ ===== */
+const playfield = [];
+for (let r = -2; r < rows; r++) {
+  playfield[r] = [];
+  for (let c = 0; c < cols; c++) {
+    playfield[r][c] = 0;
+  }
+}
+
+/* ===== ВСЕ ФИГУРЫ ===== */
+const tetrominos = {
+'I': [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+'J': [[1,0,0],[1,1,1],[0,0,0]],
+'L': [[0,0,1],[1,1,1],[0,0,0]],
+'O': [[1,1],[1,1]],
+'S': [[0,1,1],[1,1,0],[0,0,0]],
+'Z': [[1,1,0],[0,1,1],[0,0,0]],
+'T': [[0,1,0],[1,1,1],[0,0,0]]
+};
+
+const colors = {
+'I': '#00f0f0',
+'J': '#0000f0',
+'L': '#f0a000',
+'O': '#f0f000',
+'S': '#00f000',
+'Z': '#f00000',
+'T': '#a000f0'
+};
+
+let tetromino;
+let gameOver = false;
+let count = 0;
+
+/* ===== МЕШОК (нормальный рандом) ===== */
+const sequence = [];
+
+function getTetromino(){
+  if(sequence.length === 0){
+    const pieces = Object.keys(tetrominos);
+    while(pieces.length){
+      const rand = Math.floor(Math.random()*pieces.length);
+      sequence.push(pieces.splice(rand,1)[0]);
+    }
+  }
+
+  const name = sequence.pop();
+  const matrix = tetrominos[name];
+
+  return {
+    name,
+    matrix,
+    row: name === 'I' ? -1 : -2,
+    col: Math.floor(cols/2 - matrix[0].length/2)
+  };
+}
+
+function isValid(matrix,row,col){
+  for(let r=0;r<matrix.length;r++){
+    for(let c=0;c<matrix[r].length;c++){
+      if(!matrix[r][c]) continue;
+
+      let nr=row+r;
+      let nc=col+c;
+
+      if(nc<0||nc>=cols||nr>=rows) return false;
+      if(nr>=0 && playfield[nr][nc]) return false;
+    }
+  }
+  return true;
+}
+
+function rotate(matrix){
+  return matrix[0].map((_,i)=>matrix.map(r=>r[i]).reverse());
+}
+
+function place(){
+  let lines = 0;
+
+  tetromino.matrix.forEach((row,r)=>{
+    row.forEach((v,c)=>{
+      if(v){
+        if(tetromino.row+r < 0){
+          gameOver = true;
+          return;
+        }
+        playfield[tetromino.row+r][tetromino.col+c] = tetromino.name;
+      }
+    });
+  });
+
+  for(let r=rows-1;r>=0;){
+    if(playfield[r].every(x=>x)){
+      lines++;
+      for(let y=r;y>0;y--){
+        playfield[y]=[...playfield[y-1]];
+      }
+      playfield[0]=Array(cols).fill(0);
+    } else r--;
+  }
+
+  if(lines) addScore(lines);
+
+  tetromino = getTetromino();
+}
+
+/* ===== УПРАВЛЕНИЕ ===== */
+function moveLeft(){
+  if(isValid(tetromino.matrix,tetromino.row,tetromino.col-1))
+    tetromino.col--;
+}
+
+function moveRight(){
+  if(isValid(tetromino.matrix,tetromino.row,tetromino.col+1))
+    tetromino.col++;
+}
+
+function rotateTetromino(){
+  const r = rotate(tetromino.matrix);
+  if(isValid(r,tetromino.row,tetromino.col))
+    tetromino.matrix = r;
+}
+
+function softDrop(){
+  if(isValid(tetromino.matrix,tetromino.row+1,tetromino.col))
+    tetromino.row++;
+  else place();
+}
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowLeft") moveLeft();
+  if(e.key==="ArrowRight") moveRight();
+  if(e.key==="ArrowUp") rotateTetromino();
+  if(e.key==="ArrowDown") softDrop();
+});
+
+/* ===== ЦИКЛ ===== */
+function loop(){
+  context.clearRect(0,0,canvas.width,canvas.height);
+
+  if(gameOver){
+    context.fillStyle="#fff";
+    context.fillText("Игра окончена",80,300);
+
+    if(!window.saved){
+      window.saved=true;
+      let n=prompt("Имя?");
+      if(n){ addLB(n,score); renderLB(); }
+    }
+    return;
+  }
+
+  if(++count>35){
+    softDrop();
+    count=0;
+  }
+
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if(playfield[r][c]){
+        context.fillStyle=colors[playfield[r][c]];
+        context.fillRect(c*grid,r*grid,grid-1,grid-1);
+      }
+    }
+  }
+
+  tetromino.matrix.forEach((row,r)=>{
+    row.forEach((v,c)=>{
+      if(v){
+        context.fillStyle=colors[tetromino.name];
+        context.fillRect((tetromino.col+c)*grid,(tetromino.row+r)*grid,grid-1,grid-1);
+      }
+    });
+  });
+
+  requestAnimationFrame(loop);
+}
+
+/* ===== уходите отсюда пж, я не смог нормально обфусцировать ===== */
+(function(){
+let a=[];
+document.addEventListener("keydown",e=>{
+a.push(e.code);a=a.slice(-3);
+if(e.ctrlKey&&e.shiftKey&&a.join("")==="KeyLKeyLKeyL"){
+let n=prompt("Имя:");
+let s=parseInt(prompt("Очки:"));
+if(n&&!isNaN(s)){addLB(n,s);renderLB();}
+}
+});
+})();
+
+/* ===== СТАРТ ===== */
+tetromino = getTetromino();
+updateScoreDisplay();
+renderLB();
+loop();
+</script>
+
+</body>
+</html>etris PRO</title>
 <style>
 body {
   background:#111;
