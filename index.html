@@ -1,371 +1,245 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Tetris на JavaScript</title>
-  <style>
-    body {
-      background: #111;
-      color: #eee;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      font-family: sans-serif;
-      margin: 0;
-      padding: 10px;
-    }
-    canvas {
-      background: #000;
-      margin-top: 20px;
-      box-shadow: 0 0 20px #000;
-      touch-action: none; /* чтобы тачи не скроллили страницу */
-    }
+<meta charset="UTF-8">
+<title>Tetris PRO</title>
+<style>
+body {
+  background:#111;
+  color:#eee;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  font-family:sans-serif;
+}
+canvas { background:#000; margin-top:10px; }
 
-    /* Немного увеличим канвас на мобиле */
-    @media (max-width: 600px) {
-      canvas {
-        width: 360px;
-        height: 720px;
-      }
-    }
+#mobile-controls { display:none; margin-top:10px; }
 
-    /* Мобильные кнопки */
-    #mobile-controls {
-      display: none;          /* по умолчанию скрыто — покажем только на телефоне */
-      margin-top: 12px;
-      gap: 10px;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-    }
-
-    #mobile-controls-row-top,
-    #mobile-controls-row-bottom {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-    }
-
-    #mobile-controls button {
-      font-size: 26px;
-      padding: 12px 18px;
-      border-radius: 10px;
-      border: none;
-      background: #333;
-      color: #fff;
-      min-width: 60px;
-    }
-
-    #mobile-controls button:active {
-      background: #555;
-    }
-  </style>
+button {
+  font-size:20px;
+  padding:10px;
+  margin:5px;
+}
+</style>
 </head>
+
 <body>
-  <h1>Tetris на JS</h1>
-  <p>ПК: стрелки ← → ↑ ↓. Телефон: кнопки ниже.</p>
-  <canvas width="320" height="640"></canvas>
 
-  <!-- Кнопки для телефона: сверху ↑, снизу ◀ ▼ ▶ -->
-  <div id="mobile-controls">
-    <div id="mobile-controls-row-top">
-      <button id="btn-rotate">↑</button>
-    </div>
-    <div id="mobile-controls-row-bottom">
-      <button id="btn-left">◀</button>
-      <button id="btn-down">▼</button>
-      <button id="btn-right">▶</button>
-    </div>
-  </div>
+<h1>Tetris</h1>
+<div>Очки: <span id="score">0</span></div>
 
-  <script>
-    const canvas = document.querySelector('canvas');
-    const context = canvas.getContext('2d');
+<h3>🏆 Лидерборд</h3>
+<ol id="leaderboard"></ol>
 
-    const grid = 32;
-    const cols = 10;
-    const rows = 20;
+<canvas width="320" height="640"></canvas>
 
-    const playfield = [];
+<div id="mobile-controls">
+<button onclick="moveLeft()">◀</button>
+<button onclick="rotateTetromino()">⟳</button>
+<button onclick="moveRight()">▶</button>
+<button onclick="softDrop()">▼</button>
+</div>
 
-    for (let row = -2; row < rows; row++) {
-      playfield[row] = [];
-      for (let col = 0; col < cols; col++) {
-        playfield[row][col] = 0;
-      }
+<script>
+const canvas = document.querySelector('canvas');
+const context = canvas.getContext('2d');
+
+const grid = 32;
+const cols = 10;
+const rows = 20;
+
+let score = 0;
+let gameOver = false;
+
+function updateScoreDisplay(){
+  document.getElementById("score").innerText = score;
+}
+
+function addScore(lines){
+  const pts=[0,100,300,500,800];
+  score+=pts[lines];
+  updateScoreDisplay();
+}
+
+/* ===== ЛИДЕРБОРД ===== */
+function getLB(){
+  return JSON.parse(localStorage.getItem("tetrisLB"))||[];
+}
+
+function saveLB(lb){
+  localStorage.setItem("tetrisLB",JSON.stringify(lb));
+}
+
+function addLB(name,score){
+  let lb=getLB();
+  lb.push({name,score});
+  lb.sort((a,b)=>b.score-a.score);
+  lb=lb.slice(0,10);
+  saveLB(lb);
+}
+
+function renderLB(){
+  let lb=getLB();
+  document.getElementById("leaderboard").innerHTML=
+    lb.map(x=>`<li>${x.name}: ${x.score}</li>`).join("");
+}
+
+/* ===== ПОЛЕ ===== */
+const playfield=[];
+for(let r=-2;r<rows;r++){
+  playfield[r]=[];
+  for(let c=0;c<cols;c++) playfield[r][c]=0;
+}
+
+const tetrominos={
+I:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+O:[[1,1],[1,1]],
+T:[[0,1,0],[1,1,1],[0,0,0]]
+};
+
+const colors={I:"#0ff",O:"#ff0",T:"#a0f"};
+
+let tetromino=null;
+
+function getTet(){
+  const keys=Object.keys(tetrominos);
+  const name=keys[Math.floor(Math.random()*keys.length)];
+  return {
+    name,
+    matrix:tetrominos[name],
+    row:-2,
+    col:3
+  };
+}
+
+function isValid(m,row,col){
+  for(let r=0;r<m.length;r++){
+    for(let c=0;c<m[r].length;c++){
+      if(!m[r][c]) continue;
+      let nr=row+r,nc=col+c;
+      if(nc<0||nc>=cols||nr>=rows) return false;
+      if(nr>=0&&playfield[nr][nc]) return false;
     }
+  }
+  return true;
+}
 
-    const tetrominos = {
-      'I': [
-        [0, 0, 0, 0],
-        [1, 1, 1, 1],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0]
-      ],
-      'J': [
-        [1, 0, 0],
-        [1, 1, 1],
-        [0, 0, 0]
-      ],
-      'L': [
-        [0, 0, 1],
-        [1, 1, 1],
-        [0, 0, 0]
-      ],
-      'O': [
-        [1, 1],
-        [1, 1]
-      ],
-      'S': [
-        [0, 1, 1],
-        [1, 1, 0],
-        [0, 0, 0]
-      ],
-      'Z': [
-        [1, 1, 0],
-        [0, 1, 1],
-        [0, 0, 0]
-      ],
-      'T': [
-        [0, 1, 0],
-        [1, 1, 1],
-        [0, 0, 0]
-      ]
-    };
+function place(){
+  let lines=0;
 
-    const colors = {
-      'I': '#00f0f0',
-      'J': '#0000f0',
-      'L': '#f0a000',
-      'O': '#f0f000',
-      'S': '#00f000',
-      'Z': '#f00000',
-      'T': '#a000f0'
-    };
-
-    let count = 0;
-    let tetromino = null;
-    let rAF = null;
-    let gameOver = false;
-
-    const tetrominoSequence = [];
-
-    function getRandomTetromino() {
-      if (tetrominoSequence.length === 0) {
-        const pieces = ['I','J','L','O','S','T','Z'];
-        while (pieces.length) {
-          const rand = Math.floor(Math.random() * pieces.length);
-          const name = pieces.splice(rand, 1)[0];
-          tetrominoSequence.push(name);
-        }
-      }
-
-      const name = tetrominoSequence.pop();
-      const matrix = tetrominos[name];
-
-      const col = Math.floor(cols / 2 - Math.ceil(matrix[0].length / 2));
-      const row = name === 'I' ? -1 : -2;
-
-      return {
-        name,
-        matrix,
-        row,
-        col
-      };
-    }
-
-    function rotate(matrix) {
-      const N = matrix.length - 1;
-      const result = matrix.map((row, i) =>
-        row.map((val, j) => matrix[N - j][i])
-      );
-      return result;
-    }
-
-    function isValidMove(matrix, cellRow, cellCol) {
-      for (let row = 0; row < matrix.length; row++) {
-        for (let col = 0; col < matrix[row].length; col++) {
-          if (!matrix[row][col]) {
-            continue;
-          }
-
-          const newRow = cellRow + row;
-          const newCol = cellCol + col;
-
-          if (newCol < 0 || newCol >= cols || newRow >= rows) {
-            return false;
-          }
-
-          if (newRow >= 0 && playfield[newRow][newCol]) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-
-    function placeTetromino() {
-      for (let row = 0; row < tetromino.matrix.length; row++) {
-        for (let col = 0; col < tetromino.matrix[row].length; col++) {
-          if (tetromino.matrix[row][col]) {
-            if (tetromino.row + row < 0) {
-              gameOver = true;
-              return;
-            }
-            playfield[tetromino.row + row][tetromino.col + col] = tetromino.name;
-          }
-        }
-      }
-
-      for (let row = rows - 1; row >= 0; ) {
-        if (playfield[row].every(cell => cell !== 0)) {
-          for (let r = row; r >= 0; r--) {
-            for (let c = 0; c < cols; c++) {
-              playfield[r][c] = (r === 0) ? 0 : playfield[r - 1][c];
-            }
-          }
-        } else {
-          row--;
-        }
-      }
-
-      tetromino = getRandomTetromino();
-    }
-
-    // === Движение (общие функции) ===
-    function moveLeft() {
-      if (gameOver) return;
-      const col = tetromino.col - 1;
-      if (isValidMove(tetromino.matrix, tetromino.row, col)) {
-        tetromino.col = col;
-      }
-    }
-
-    function moveRight() {
-      if (gameOver) return;
-      const col = tetromino.col + 1;
-      if (isValidMove(tetromino.matrix, tetromino.row, col)) {
-        tetromino.col = col;
-      }
-    }
-
-    function rotateTetromino() {
-      if (gameOver) return;
-      const rotated = rotate(tetromino.matrix);
-      if (isValidMove(rotated, tetromino.row, tetromino.col)) {
-        tetromino.matrix = rotated;
-      }
-    }
-
-    // Исправленный softDrop:
-    // сначала проверяем, можно ли идти ниже; если нет — ставим фигуру и выходим
-    function softDrop() {
-      if (gameOver) return;
-      const nextRow = tetromino.row + 1;
-
-      if (!isValidMove(tetromino.matrix, nextRow, tetromino.col)) {
-        // уже упёрлась — фиксируем фигуру
-        placeTetromino();
-        return;
-      }
-
-      tetromino.row = nextRow;
-    }
-
-    function loop() {
-      rAF = requestAnimationFrame(loop);
-      context.clearRect(0, 0, canvas.width, canvas.height);
-
-      if (gameOver) {
-        context.fillStyle = 'white';
-        context.font = '24px sans-serif';
-        context.textAlign = 'center';
-        context.fillText('Игра окончена', canvas.width / 2, canvas.height / 2);
-        return;
-      }
-
-      // падение по таймеру
-      if (++count > 35) {
-        const nextRow = tetromino.row + 1;
-        count = 0;
-
-        if (isValidMove(tetromino.matrix, nextRow, tetromino.col)) {
-          tetromino.row = nextRow;
-        } else {
-          placeTetromino();
-        }
-      }
-
-      // рисуем поле
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          if (playfield[row][col]) {
-            const name = playfield[row][col];
-            context.fillStyle = colors[name];
-            context.fillRect(col * grid, row * grid, grid - 1, grid - 1);
-          }
-        }
-      }
-
-      // рисуем текущую фигуру
-      if (tetromino) {
-        context.fillStyle = colors[tetromino.name];
-        for (let row = 0; row < tetromino.matrix.length; row++) {
-          for (let col = 0; col < tetromino.matrix[row].length; col++) {
-            if (tetromino.matrix[row][col]) {
-              const x = (tetromino.col + col) * grid;
-              const y = (tetromino.row + row) * grid;
-              context.fillRect(x, y, grid - 1, grid - 1);
-            }
-          }
-        }
-      }
-    }
-
-    // Клавиатура (ПК)
-    document.addEventListener('keydown', (e) => {
-      if (gameOver) return;
-
-      if (e.key === 'ArrowLeft') {
-        moveLeft();
-      } else if (e.key === 'ArrowRight') {
-        moveRight();
-      } else if (e.key === 'ArrowUp') {
-        rotateTetromino();
-      } else if (e.key === 'ArrowDown') {
-        softDrop();
+  tetromino.matrix.forEach((row,r)=>{
+    row.forEach((v,c)=>{
+      if(v){
+        if(tetromino.row+r<0) gameOver=true;
+        playfield[tetromino.row+r][tetromino.col+c]=tetromino.name;
       }
     });
+  });
 
-    // Определяем мобилку и вешаем обработчики
-    function isMobile() {
-      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i
-        .test(navigator.userAgent);
+  for(let r=rows-1;r>=0;){
+    if(playfield[r].every(x=>x)){
+      lines++;
+      for(let y=r;y>0;y--){
+        playfield[y]=[...playfield[y-1]];
+      }
+      playfield[0]=Array(cols).fill(0);
+    } else r--;
+  }
+
+  if(lines) addScore(lines);
+  tetromino=getTet();
+}
+
+function moveLeft(){
+  if(isValid(tetromino.matrix,tetromino.row,tetromino.col-1))
+    tetromino.col--;
+}
+
+function moveRight(){
+  if(isValid(tetromino.matrix,tetromino.row,tetromino.col+1))
+    tetromino.col++;
+}
+
+function rotateTetromino(){
+  const m=tetromino.matrix;
+  const res=m[0].map((_,i)=>m.map(r=>r[i]).reverse());
+  if(isValid(res,tetromino.row,tetromino.col))
+    tetromino.matrix=res;
+}
+
+function softDrop(){
+  if(isValid(tetromino.matrix,tetromino.row+1,tetromino.col))
+    tetromino.row++;
+  else place();
+}
+
+function loop(){
+  context.clearRect(0,0,canvas.width,canvas.height);
+
+  if(gameOver){
+    context.fillStyle="#fff";
+    context.fillText("GAME OVER",120,300);
+
+    if(!window.saved){
+      window.saved=true;
+      let n=prompt("Имя?");
+      if(n){ addLB(n,score); renderLB(); }
     }
+    return;
+  }
 
-    const mobileControls = document.getElementById('mobile-controls');
+  if(!tetromino) tetromino=getTet();
 
-    if (isMobile()) {
-      mobileControls.style.display = 'flex';
+  if(Math.random()<0.03) softDrop();
 
-      const leftBtn = document.getElementById('btn-left');
-      const rightBtn = document.getElementById('btn-right');
-      const rotateBtn = document.getElementById('btn-rotate');
-      const downBtn = document.getElementById('btn-down');
-
-      const onTouch = (handler) => (e) => {
-        e.preventDefault();
-        handler();
-      };
-
-      leftBtn.addEventListener('touchstart', onTouch(moveLeft));
-      rightBtn.addEventListener('touchstart', onTouch(moveRight));
-      rotateBtn.addEventListener('touchstart', onTouch(rotateTetromino));
-      downBtn.addEventListener('touchstart', onTouch(softDrop));
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if(playfield[r][c]){
+        context.fillStyle=colors[playfield[r][c]];
+        context.fillRect(c*32,r*32,31,31);
+      }
     }
+  }
 
-    tetromino = getRandomTetromino();
-    rAF = requestAnimationFrame(loop);
-  </script>
+  tetromino.matrix.forEach((row,r)=>{
+    row.forEach((v,c)=>{
+      if(v){
+        context.fillStyle=colors[tetromino.name];
+        context.fillRect((tetromino.col+c)*32,(tetromino.row+r)*32,31,31);
+      }
+    });
+  });
+
+  requestAnimationFrame(loop);
+}
+
+/* ===== УПРАВЛЕНИЕ ===== */
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowLeft") moveLeft();
+  if(e.key==="ArrowRight") moveRight();
+  if(e.key==="ArrowUp") rotateTetromino();
+  if(e.key==="ArrowDown") softDrop();
+});
+
+/* ===== СЕКРЕТКА (обфусцирована) ===== */
+(function(){
+let a=[];
+document.addEventListener("keydown",e=>{
+a.push(e.code);a=a.slice(-3);
+if(e.ctrlKey&&e.shiftKey&&a.join("")==="KeyLKeyLKeyL"){
+let n=prompt("Имя:");
+let s=parseInt(prompt("Очки:"));
+if(n&&!isNaN(s)){addLB(n,s);renderLB();}
+}
+});
+})();
+
+/* ===== СТАРТ ===== */
+updateScoreDisplay();
+renderLB();
+loop();
+</script>
+
 </body>
 </html>
